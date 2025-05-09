@@ -47,8 +47,8 @@ As a self-taught researcher with experience in data-driven work, I believe that 
 ---
 
 ## 3. 🖼️ System Diagram
-
-![System Diagram](./path-to-your-image.png)  
+Here is the Diagram of system's Architecture
+![System Diagram](./Proposal/Proposal_diagram.png)  
 
 
 ---
