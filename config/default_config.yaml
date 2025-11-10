@@ -1,0 +1,135 @@
+# Self-Evolving Teacher-Student Architecture Configuration
+
+system:
+  name: "Self-Evolving LLM System"
+  version: "0.1.0"
+  mode: "demo"  # demo, production
+
+models:
+  supervisor:
+    model_id: "supervisor-gpt4"
+    model_type: "openai"
+    model_name: "gpt-4"
+    max_tokens: 2048
+    temperature: 0.3
+
+  teachers:
+    - model_id: "teacher-math"
+      model_type: "mock"  # mock, openai, anthropic
+      domain: "mathematics"
+      specialization: ["algebra", "calculus", "geometry"]
+      confidence_threshold: 0.7
+
+    - model_id: "teacher-science"
+      model_type: "mock"
+      domain: "science"
+      specialization: ["physics", "chemistry", "biology"]
+      confidence_threshold: 0.7
+
+    - model_id: "teacher-coding"
+      model_type: "mock"
+      domain: "programming"
+      specialization: ["python", "javascript", "algorithms"]
+      confidence_threshold: 0.7
+
+  students:
+    - model_id: "student-math-1"
+      model_type: "mock"
+      domain: "mathematics"
+      teacher_id: "teacher-math"
+      learning_rate: 0.01
+
+    - model_id: "student-math-2"
+      model_type: "mock"
+      domain: "mathematics"
+      teacher_id: "teacher-math"
+      learning_rate: 0.01
+
+    - model_id: "student-science-1"
+      model_type: "mock"
+      domain: "science"
+      teacher_id: "teacher-science"
+      learning_rate: 0.01
+
+    - model_id: "student-coding-1"
+      model_type: "mock"
+      domain: "programming"
+      teacher_id: "teacher-coding"
+      learning_rate: 0.01
+
+vector_database:
+  type: "chromadb"  # chromadb, faiss
+  path: "./data/vector_db"
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+  similarity_metric: "cosine"
+  top_k: 5
+
+routing:
+  similarity_threshold: 0.80  # If query similarity > this, route to best performer
+  novel_query_threshold: 0.50  # If < this, consider query novel
+  enable_parallel_answering: true
+  max_parallel_models: 10
+
+evaluation:
+  confidence_scoring:
+    enabled: true
+    method: "supervisor"  # supervisor, ensemble, voting
+
+  metrics:
+    - "relevance"
+    - "correctness"
+    - "completeness"
+    - "clarity"
+
+  weights:
+    relevance: 0.3
+    correctness: 0.4
+    completeness: 0.2
+    clarity: 0.1
+
+promotion:
+  student_to_ta:
+    min_queries: 30
+    min_confidence: 0.75
+    min_win_rate: 0.60
+
+  ta_to_teacher:
+    min_queries: 50
+    min_confidence: 0.85
+    min_win_rate: 0.70
+
+  demotion:
+    enabled: true
+    window_size: 20
+    min_performance_threshold: 0.50
+
+feedback:
+  enabled: true
+  methods:
+    - "confidence_scores"
+    - "reasoning_comparison"
+    - "best_answer_distillation"
+
+  distillation:
+    enabled: true
+    temperature: 2.0
+    alpha: 0.7
+
+monitoring:
+  enabled: true
+  metrics_update_interval: 10  # queries
+  dashboard_refresh: 60  # seconds
+
+  tracked_metrics:
+    - "query_count"
+    - "avg_confidence"
+    - "model_usage"
+    - "promotion_events"
+    - "cost_per_query"
+    - "response_time"
+
+logging:
+  level: "INFO"
+  format: "json"
+  file: "./data/logs/system.log"
+  rotation: "100 MB"
