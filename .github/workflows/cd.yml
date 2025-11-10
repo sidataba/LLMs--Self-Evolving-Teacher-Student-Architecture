@@ -1,0 +1,138 @@
+# Continuous Deployment Pipeline
+#
+# Triggers: On release or manual workflow_dispatch
+# Jobs:
+# - Build and push Docker image to registry
+# - Deploy to Kubernetes cluster
+
+name: CD
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event.inputs.environment == 'staging' || github.event_name == 'release'
+    environment: staging
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Configure kubectl
+      uses: azure/k8s-set-context@v3
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.KUBE_CONFIG_STAGING }}
+
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl apply -f k8s/ -n llm-system-staging
+        kubectl rollout status deployment/llm-teacher-student -n llm-system-staging
+
+    - name: Verify deployment
+      run: |
+        kubectl get pods -n llm-system-staging
+        kubectl get services -n llm-system-staging
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.event.inputs.environment == 'production' || github.event_name == 'release'
+    environment: production
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Configure kubectl
+      uses: azure/k8s-set-context@v3
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.KUBE_CONFIG_PRODUCTION }}
+
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl apply -f k8s/ -n llm-system
+        kubectl rollout status deployment/llm-teacher-student -n llm-system
+
+    - name: Verify deployment
+      run: |
+        kubectl get pods -n llm-system
+        kubectl get services -n llm-system
+
+    - name: Run smoke tests
+      run: |
+        # Add smoke tests here
+        echo "Running smoke tests..."
+        # kubectl exec -it deployment/llm-teacher-student -n llm-system -- python -m pytest tests/smoke/
+
+  notify:
+    name: Notify Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always()
+
+    steps:
+    - name: Send notification
+      run: |
+        echo "Deployment completed: ${{ github.event.inputs.environment || 'staging' }}"
+        # Add Slack/Discord/Email notification here
