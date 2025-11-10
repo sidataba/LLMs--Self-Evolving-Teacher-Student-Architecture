@@ -1,0 +1,188 @@
+# Kubernetes Deployment for Self-Evolving Teacher-Student Architecture
+#
+# Creates:
+# - Deployment with replicas for horizontal scaling
+# - Service for load balancing
+# - ConfigMap for configuration
+# - Secret for API keys
+#
+# Usage:
+#   kubectl apply -f k8s/
+#   kubectl get pods
+#   kubectl logs -f deployment/llm-teacher-student
+
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-system
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-config
+  namespace: llm-system
+data:
+  LOG_LEVEL: "INFO"
+  VECTOR_DB_PATH: "/app/data/vector_db"
+  METRICS_DB_PATH: "/app/data/metrics.db"
+  SIMILARITY_THRESHOLD: "0.80"
+  PROMOTION_THRESHOLD: "0.85"
+
+---
+# Secret for API keys (base64 encoded)
+# Create from command line:
+#   kubectl create secret generic llm-secrets \
+#     --from-literal=OPENAI_API_KEY=sk-... \
+#     --from-literal=ANTHROPIC_API_KEY=sk-ant-... \
+#     -n llm-system
+apiVersion: v1
+kind: Secret
+metadata:
+  name: llm-secrets
+  namespace: llm-system
+type: Opaque
+# data:
+#   OPENAI_API_KEY: <base64-encoded-key>
+#   ANTHROPIC_API_KEY: <base64-encoded-key>
+
+---
+# Persistent Volume Claim for data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llm-data-pvc
+  namespace: llm-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard  # Adjust based on your cloud provider
+
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-teacher-student
+  namespace: llm-system
+  labels:
+    app: llm-teacher-student
+spec:
+  replicas: 3  # Horizontal scaling
+  selector:
+    matchLabels:
+      app: llm-teacher-student
+  template:
+    metadata:
+      labels:
+        app: llm-teacher-student
+    spec:
+      containers:
+      - name: llm-app
+        image: your-registry/llm-teacher-student:latest  # Update with your image
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: llm-config
+              key: LOG_LEVEL
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: llm-secrets
+              key: OPENAI_API_KEY
+              optional: true
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: llm-secrets
+              key: ANTHROPIC_API_KEY
+              optional: true
+        - name: VECTOR_DB_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: llm-config
+              key: VECTOR_DB_PATH
+        volumeMounts:
+        - name: data
+          mountPath: /app/data
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: llm-data-pvc
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-teacher-student-service
+  namespace: llm-system
+  labels:
+    app: llm-teacher-student
+spec:
+  type: LoadBalancer  # Use ClusterIP for internal, LoadBalancer for external
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: llm-teacher-student
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: llm-hpa
+  namespace: llm-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: llm-teacher-student
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

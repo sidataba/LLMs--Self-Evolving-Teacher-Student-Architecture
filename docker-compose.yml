@@ -1,0 +1,92 @@
+# Docker Compose for Self-Evolving Teacher-Student Architecture
+#
+# Provides:
+# - Main application
+# - ChromaDB vector database
+# - Monitoring dashboard
+# - Optional: Redis for caching
+#
+# Usage:
+#   docker-compose up -d
+#   docker-compose logs -f
+#   docker-compose down
+
+version: '3.8'
+
+services:
+  # Main application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: llm-teacher-student
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - VECTOR_DB_PATH=/app/data/vector_db
+      - METRICS_DB_PATH=/app/data/metrics.db
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      - ./src:/app/src
+    networks:
+      - llm-network
+    depends_on:
+      - chromadb
+    restart: unless-stopped
+
+  # ChromaDB vector database
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: llm-chromadb
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+    networks:
+      - llm-network
+    restart: unless-stopped
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: llm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - llm-network
+    restart: unless-stopped
+
+  # Monitoring dashboard (simple)
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: llm-dashboard
+    ports:
+      - "8080:8080"
+    environment:
+      - DASHBOARD_PORT=8080
+    volumes:
+      - ./data:/app/data:ro
+    networks:
+      - llm-network
+    command: python -m http.server 8080
+    restart: unless-stopped
+
+volumes:
+  chroma-data:
+  redis-data:
+
+networks:
+  llm-network:
+    driver: bridge

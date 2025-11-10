@@ -1,0 +1,196 @@
+# Configuration for using REAL LLM APIs (OpenAI, Anthropic, etc.)
+#
+# IMPORTANT: Set API keys in environment variables:
+#   export OPENAI_API_KEY=sk-...
+#   export ANTHROPIC_API_KEY=sk-ant-...
+#
+# Or use .env file (copy from .env.example)
+
+system:
+  name: "Self-Evolving LLM System (Real LLMs)"
+  version: "0.1.0"
+  mode: "production"  # demo, production
+
+# Model Configuration
+# Use model_type: "openai" or "anthropic" for real LLMs
+# Use model_type: "mock" for demo/testing without API costs
+
+models:
+  # Supervisor: Highest quality model (GPT-4 or Claude Opus)
+  supervisor:
+    model_id: "supervisor-gpt4"
+    model_type: "openai"  # openai, anthropic, mock
+    model_name: "gpt-4"  # gpt-4, gpt-4-turbo-preview, claude-3-opus-20240229
+    max_tokens: 2048
+    temperature: 0.3
+    base_confidence: 0.92
+
+  # Alternative supervisor using Claude Opus
+  # supervisor:
+  #   model_id: "supervisor-opus"
+  #   model_type: "anthropic"
+  #   model_name: "claude-3-opus-20240229"
+  #   max_tokens: 2048
+  #   temperature: 0.3
+  #   base_confidence: 0.94
+
+  # Teachers: Mid-tier models (GPT-3.5-turbo or Claude Sonnet)
+  teachers:
+    - model_id: "teacher-math"
+      model_type: "openai"
+      model_name: "gpt-3.5-turbo"
+      domain: "mathematics"
+      specialization: ["algebra", "calculus", "geometry", "statistics"]
+      confidence_threshold: 0.75
+      max_tokens: 1024
+      temperature: 0.5
+      base_confidence: 0.85
+
+    - model_id: "teacher-science"
+      model_type: "anthropic"
+      model_name: "claude-3-sonnet-20240229"
+      domain: "science"
+      specialization: ["physics", "chemistry", "biology", "astronomy"]
+      confidence_threshold: 0.75
+      max_tokens: 1024
+      temperature: 0.5
+      base_confidence: 0.88
+
+    - model_id: "teacher-coding"
+      model_type: "openai"
+      model_name: "gpt-3.5-turbo"
+      domain: "programming"
+      specialization: ["python", "javascript", "algorithms", "data-structures"]
+      confidence_threshold: 0.75
+      max_tokens: 1024
+      temperature: 0.4
+      base_confidence: 0.84
+
+  # Students: Fastest/cheapest models (Claude Haiku) or mock models
+  students:
+    - model_id: "student-math-1"
+      model_type: "anthropic"
+      model_name: "claude-3-haiku-20240307"
+      domain: "mathematics"
+      teacher_id: "teacher-math"
+      learning_rate: 0.01
+      max_tokens: 512
+      temperature: 0.6
+      base_confidence: 0.78
+
+    - model_id: "student-math-2"
+      model_type: "anthropic"
+      model_name: "claude-3-haiku-20240307"
+      domain: "mathematics"
+      teacher_id: "teacher-math"
+      learning_rate: 0.01
+      max_tokens: 512
+      temperature: 0.6
+      base_confidence: 0.76
+
+    - model_id: "student-science-1"
+      model_type: "mock"  # Can use mock for students to save costs
+      domain: "science"
+      teacher_id: "teacher-science"
+      learning_rate: 0.01
+      base_confidence: 0.72
+
+    - model_id: "student-coding-1"
+      model_type: "mock"
+      domain: "programming"
+      teacher_id: "teacher-coding"
+      learning_rate: 0.01
+      base_confidence: 0.70
+
+# Cost-optimized configuration (hybrid approach)
+# Supervisor: GPT-4 (best quality)
+# Teachers: Claude Sonnet (good balance)
+# Students: Claude Haiku or Mock (cheapest)
+
+vector_database:
+  type: "chromadb"
+  path: "./data/vector_db_production"
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+  similarity_metric: "cosine"
+  top_k: 5
+
+routing:
+  similarity_threshold: 0.80
+  novel_query_threshold: 0.50
+  enable_parallel_answering: true
+  max_parallel_models: 10
+
+evaluation:
+  confidence_scoring:
+    enabled: true
+    method: "supervisor"
+
+  metrics:
+    - "relevance"
+    - "correctness"
+    - "completeness"
+    - "clarity"
+
+  weights:
+    relevance: 0.3
+    correctness: 0.4
+    completeness: 0.2
+    clarity: 0.1
+
+promotion:
+  student_to_ta:
+    min_queries: 50
+    min_confidence: 0.75
+    min_win_rate: 0.65
+
+  ta_to_teacher:
+    min_queries: 100
+    min_confidence: 0.85
+    min_win_rate: 0.75
+
+  demotion:
+    enabled: true
+    window_size: 30
+    min_performance_threshold: 0.55
+
+feedback:
+  enabled: true
+  methods:
+    - "confidence_scores"
+    - "reasoning_comparison"
+    - "best_answer_distillation"
+
+  distillation:
+    enabled: true
+    strategy: "multi-aspect"
+    batch_size: 16
+    automatic_trigger: true
+    min_samples_for_distillation: 50
+
+monitoring:
+  enabled: true
+  metrics_update_interval: 10
+  dashboard_refresh: 60
+
+  tracked_metrics:
+    - "query_count"
+    - "avg_confidence"
+    - "model_usage"
+    - "promotion_events"
+    - "cost_per_query"
+    - "total_cost"
+    - "tokens_used"
+    - "response_time"
+
+logging:
+  level: "INFO"
+  format: "json"
+  file: "./data/logs/production.log"
+  rotation: "100 MB"
+
+# Cost tracking
+cost_tracking:
+  enabled: true
+  log_file: "./data/logs/costs.log"
+  alert_threshold_usd: 100.0  # Alert if daily cost exceeds this
+  budget_limit_usd: 1000.0  # Monthly budget limit
